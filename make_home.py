@@ -226,6 +226,71 @@ def market_overview():
             + f'<div class="mis">{tiles}</div><div class="mps">{first}{more}</div></section>')
 
 
+def _spark_tiles(M):
+    """概況の指数タイル（2026-11-25）：前日比％を大きく、その日の日中の動き（5分足、fetch_mkt_intraday.py）を小さなグラフで。
+    点線が前日終値、それより上は上げの色・下は下げの色で塗る。右に日中の高値・安値。5%以上動いた日は％を色の帯に。
+    日中の点が無いキーはグラフ無しで出す。数字はその日の終値（15分ごとの値には書き換えない）"""
+    e = lambda x: str(x).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    try:
+        I = json.load(open(BASE / "data" / "market" / "intraday.json", encoding="utf-8")).get("s", {})
+    except Exception:
+        I = {}
+    out = ""
+    for t in M.get("tiles", []):
+        close, chg, nd = float(t["close"]), float(t["chg"]), int(t["nd"])
+        prev = close / (1 + chg / 100) if t["csuf"] == "%" else close - chg
+        pct = (close / prev - 1) * 100 if prev else 0.0
+        c = "u" if pct > 0 else "d" if pct < 0 else ""
+        big = " x" if abs(pct) >= 5 else ""
+        dt = t.get("date") or M["asof"]
+        dl = f'<small>{int(dt[5:7])}/{int(dt[8:10])}</small>' if dt != M["asof"] else ""
+        cs = "%" if t["csuf"] == "%" else t["csuf"]
+        dv = close - prev
+        chs = (f'{dv:+,.{nd}f}' if t["csuf"] == "%" else f'{chg:+,.{3 if t["csuf"] == "pt" else nd}f}{cs}')
+        svg = ""
+        x = (I.get(t["k"]) or {}).get(dt)
+        if x and len(x.get("v", [])) >= 3:
+            v = list(x["v"])
+            r = close / v[-1] if v[-1] else 1
+            v = [a * r for a in v] if abs(r - 1) > 0.02 else v[:-1] + [close]   # TOPIX は ETF の形を終値に合わせる
+            W, H, R, T, B = 220, 66, 44, 5, 5
+            hi, lo = max(v), min(v)
+            y1, y0 = max(hi, prev), min(lo, prev)
+            pad = (y1 - y0) * 0.06 or abs(prev) * 0.001 or 1
+            y1, y0 = y1 + pad, y0 - pad
+            Y = lambda a: T + (y1 - a) / (y1 - y0) * (H - T - B)
+            X = lambda i: i / (len(v) - 1) * (W - R)
+            pts = " ".join(f"{X(i):.1f},{Y(a):.1f}" for i, a in enumerate(v))
+            yp = Y(prev)
+            area = f"M0,{yp:.1f} L{pts.replace(' ', ' L')} L{X(len(v) - 1):.1f},{yp:.1f} Z"
+            k = e(t["k"])
+            fm = lambda a: f"{a:,.{nd}f}"
+            ly = lambda yy, up: min(max(yy + (8 if up else -2), 9), H - 1)
+            yh, yl = ly(Y(hi), True), ly(Y(lo), False)
+            if yl - yh < 11:      # 日中の値幅が狭い（窓を開けた日など）と高値・安値の数字が重なるので離す
+                m = (yh + yl) / 2
+                yh, yl = max(m - 5.5, 9), min(m + 5.5, H - 1)
+                if yl - yh < 11:
+                    yh, yl = (yl - 11, yl) if yl >= H - 1 else (yh, yh + 11)
+            svg = (f'<svg viewBox="0 0 {W} {H}" aria-hidden="true"><defs>'
+                   f'<clipPath id="ca_{k}"><rect width="{W}" height="{yp:.1f}"/></clipPath>'
+                   f'<clipPath id="cb_{k}"><rect y="{yp:.1f}" width="{W}" height="{H}"/></clipPath></defs>'
+                   f'<path d="{area}" class="fu" clip-path="url(#ca_{k})"/><path d="{area}" class="fd" clip-path="url(#cb_{k})"/>'
+                   f'<line x1="0" x2="{W - R}" y1="{yp:.1f}" y2="{yp:.1f}" class="pv"/>'
+                   f'<polyline points="{pts}" class="ln"/>'
+                   f'<circle cx="{X(len(v) - 1):.1f}" cy="{Y(v[-1]):.1f}" r="2.2" class="dt"/>'
+                   f'<text x="{W - R + 4}" y="{yh:.1f}">{fm(hi)}</text>'
+                   f'<text x="{W - R + 4}" y="{yl:.1f}">{fm(lo)}</text></svg>'
+                   f'<div class="tm"><span>{e(x.get("t0", ""))}</span><span>{e(x.get("t1", ""))}</span></div>')
+        else:
+            svg = '<div class="nos"></div>'
+        out += (f'<div class="mi mt" data-k="{e(t["k"])}"><div class="nm"><span>{e(t["name"])}</span>{dl}</div>'
+                f'<div class="pc {c}{big}">{pct:+.2f}<i>%</i></div>{svg}'
+                f'<div class="cv"><b>{close:,.{nd}f}{e(t["suf"])}</b><em class="{c}">{chs}</em></div></div>')
+    return out
+
+
+
 def market_merged():
     """マーケット概況に地合い・株価指数・業種別の騰落率を取り込んだ1枚（KB_MKT=merged のとき）。
     同じ数字は1回だけ出す：指数＝タイル、値上がり・値下がり＝帯グラフ、業種＝色つきのタイル。
@@ -244,15 +309,9 @@ def market_merged():
     para = lambda h, t: f'<div class="mpp"><span class="ph">{e(h)}</span>{t}</div>'
 
     # 指数のタイル（株価指数カードの代わり。主要指数ダッシュボードがあれば押すと開く）
-    tiles = ""
-    for t in M.get("tiles", []):
-        c = "u" if t["dir"] > 0 else "d" if t["dir"] < 0 else ""
-        arrow = "▲" if t["dir"] > 0 else "▼" if t["dir"] < 0 else ""
-        nm = e(t["name"]) + (f'（{int(t["date"][5:7])}/{int(t["date"][8:10])}）' if t.get("date") and t["date"] != M["asof"] else "")
-        tiles += (f'<div class="mi" data-k="{t["k"]}"><span>{nm}</span><b>{t["close"]:,.{t["nd"]}f}{t["suf"]}</b>'
-                  f'<em class="{c}">{arrow}{abs(t["chg"]):,.2f}{t["csuf"]}</em></div>')
-    tiles = (f'<a class="mis" href="./indices.html" title="主要指数ダッシュボードをひらく">{tiles}</a>' if has_ix
-             else f'<div class="mis">{tiles}</div>')
+    tiles = _spark_tiles(M)
+    tiles = (f'<a class="mis mig" href="./indices.html" title="主要指数ダッシュボードをひらく">{tiles}</a>' if has_ix
+             else f'<div class="mis mig">{tiles}</div>')
 
     # 主要指数の文章＋ニュースの見出し
     top = para("主要指数", P["主要指数"]) if P.get("主要指数") else ""
@@ -829,6 +888,7 @@ h1{font-size:24px;font-weight:800;letter-spacing:.02em;margin:0}
 .mbtn{display:inline-block}.mkt:not(.open) .mmore{display:none}}
 /* 概況に地合い・指数・業種をまとめた1枚（KB_MKT=merged） */
 a.mis{text-decoration:none;color:inherit}
+.mig{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;background:transparent;border:0;border-radius:0;overflow:visible}.mt{border:1px solid var(--line);border-radius:12px;padding:10px 12px 9px;gap:2px;transition:background .15s}a.mis .mt:hover{background:color-mix(in srgb,var(--fg) 5%,var(--card))}.mt .nm{display:flex;align-items:baseline;gap:6px;font-size:12px;font-weight:700;color:var(--fg2);white-space:nowrap;overflow:hidden}.mt .nm span{font-size:12px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis}.mt .nm small{font-size:10.5px;color:var(--mut);font-weight:600}.mt .pc{align-self:flex-start;font-size:24px;font-weight:800;letter-spacing:-.03em;line-height:1.2}.mt .pc i{font-style:normal;font-size:14px;margin-left:1px}.mt .pc.x{color:#fff;border-radius:7px;padding:0 7px}.mt .pc.x.u{background:var(--upb)}.mt .pc.x.d{background:var(--dnb)}.mt svg{display:block;width:100%;height:auto;margin-top:4px;overflow:visible}.mt svg .fu{fill:var(--upb);fill-opacity:calc(.18 + .1*var(--k))}.mt svg .fd{fill:var(--dnb);fill-opacity:calc(.18 + .1*var(--k))}.mt svg .pv{stroke:var(--mut);stroke-width:1;stroke-dasharray:3 3}.mt svg .ln{fill:none;stroke:var(--fg);stroke-width:1.4;stroke-linejoin:round}.mt svg .dt{fill:var(--fg)}.mt svg text{font-size:9.5px;font-weight:700;fill:var(--mut)}.mt .tm{display:flex;justify-content:space-between;padding-right:20%;font-size:9.5px;color:var(--mut);margin-top:1px}.mt .nos{height:52px}.mt .cv{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:3px}.mt .cv b{font-size:15px;font-weight:800;letter-spacing:-.02em}.mt .cv em{font-style:normal;font-size:12px;font-weight:700}@media(max-width:700px){.mig{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.mt{padding:8px 9px 7px}.mt .pc{font-size:20px}.mt .cv b{font-size:13.5px}.mt .cv em{font-size:11px}.mt svg text{font-size:14px}.mt .tm{font-size:9px}}
 .msec{display:flex;flex-direction:column;gap:10px;padding-top:12px;border-top:1px solid var(--line)}
 .mst{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-size:12.5px;color:var(--mut)}
 .mst .ph{display:inline-block;padding:0 8px;border:1px solid var(--line);border-radius:6px;font-size:11.5px;font-weight:800;color:var(--fg);line-height:1.7}

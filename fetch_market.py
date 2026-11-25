@@ -98,6 +98,11 @@ def main():
         fetch_news.main()
     except Exception as ex:
         print(f"ニュースの見出し: 失敗 {ex}")
+    try:      # 概況の指数タイルに描く日中の動き（5分足、fetch_mkt_intraday.py）。失敗しても前回分で続ける
+        import fetch_mkt_intraday
+        fetch_mkt_intraday.main()
+    except Exception as ex:
+        print(f"日中の動き（5分足）: 失敗 {ex}")
     return 1 if bad == len(SERIES) else 0
 
 

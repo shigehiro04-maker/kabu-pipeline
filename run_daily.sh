@@ -1,5 +1,5 @@
 #!/bin/bash
-# 日次更新（launchd から毎営業日16:30、およびPC起動・ログイン時に呼ばれます）
+# 日次更新（launchd から毎営業日15:40（速報値）・20:40（確報値の取り直し）、およびPC起動・ログイン時に呼ばれます）
 #   0) 銘柄リストの確認（JPXの一覧・新規上場・上場廃止を突き合わせ、追加・除外を反映）
 #   1) 株価CSVの取得（--catchup: 最新なら何もせず、遅れていれば不足分だけ取得）
 #   1b) 分割の検出・修正、1b-2) 株価CSVの点検（ありえない値・分割の日ずれ）
@@ -86,7 +86,10 @@ done
   || echo "[$(date '+%F %T')] 銘柄リストの確認に失敗（logs/tickers.log）" >> logs/run_daily.log
 
 # 1) 株価CSVの取得・追記
-"$PY" fetch_stocks.py --catchup
+# 20時以降の回（平日20:40）は、Yahoo の確報値（20:30ごろ揃う）で直近数日を取り直して上書きする（2026-11-25）
+FETCH_OPT="--catchup"
+[ "$(date +%H)" -ge 20 ] && FETCH_OPT="--catchup --refresh"
+"$PY" fetch_stocks.py $FETCH_OPT
 STATUS=$?
 
 # 1a) 新しくリストに入った銘柄（新規上場など）の過去10年分を取得。株価CSVが無い銘柄だけ取りに行く。

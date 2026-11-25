@@ -1,12 +1,13 @@
 # 株分析の日次更新（Mac の run_daily.sh を GitHub のサーバー上で動かす）
-#   ・平日 16:37（日本時間）に自動実行。手動実行は Actions 画面の「Run workflow」から
+#   ・平日 15:40（速報値）・20:40（確報値の取り直し）（日本時間）に自動実行。手動実行は Actions 画面の「Run workflow」から
 #   ・作業データは暗号化してこのリポジトリのリリース「state」に保存（cloud/save_state.sh）
 #   ・サイトの公開: 自動実行はリポジトリ変数 KABU_DEPLOY が 1 のときだけ。手動実行は「deploy」にチェック
 name: 株データの日次更新
 
 on:
   schedule:
-    - cron: '37 7 * * 1-5'      # UTC 7:37 = 日本時間 16:37（平日）
+    - cron: '40 6 * * 1-5'      # UTC 6:40 = 日本時間 15:40（平日・速報値）
+    - cron: '40 11 * * 1-5'     # UTC 11:40 = 日本時間 20:40（平日・確報値の取り直し）
   workflow_dispatch:
     inputs:
       deploy:

@@ -54,7 +54,8 @@ BATCH_SIZE = 100          # yfinance に一度に渡す銘柄数
 SLEEP_BETWEEN_BATCH = 1.5  # バッチ間の待機秒数（レート制限対策）
 CSV_HEADER = ["date", "open", "high", "low", "close", "volume"]
 
-CLOSE_HOUR = 16           # 大引け15:30 ＋ 余裕。この時刻以降なら当日分が確定とみなす
+# 大引け15:30 ＋ 余裕の15:40 以降なら当日分を保存する（速報値。20:40 の回で確報値に取り直す。2026-11-25）
+CLOSE_MIN = 15 * 60 + 40
 
 
 # --------------------------------------------------------------------------
@@ -99,7 +100,7 @@ def last_expected_session(now=None):
     """今の時点で「データが揃っているはずの最終営業日」を返す。"""
     now = now or datetime.now()
     d = now.date()
-    if now.hour < CLOSE_HOUR:
+    if now.hour * 60 + now.minute < CLOSE_MIN:
         d -= timedelta(days=1)      # 大引け前なら前営業日まで
     while not is_trading_day(d):
         d -= timedelta(days=1)
@@ -140,8 +141,8 @@ def latest_data_date(sample=30):
 # 最新日の株価がこの割合未満の銘柄にしか無ければ「取りこぼし」とみなして取り直す
 MIN_COVERAGE = 0.9
 RETRY_WAIT_SEC = 60
-# 当日の株価を確定値として保存してよい時刻（15:45 を分で表したもの）
-MARKET_SETTLED_MIN = 15 * 60 + 45
+# 当日の株価を保存してよい時刻（15:40 を分で表したもの。2026-11-25 に 15:45 から変更）
+MARKET_SETTLED_MIN = 15 * 60 + 40
 
 
 def daily_coverage(day):
@@ -523,6 +524,8 @@ def main():
     p.add_argument("--raw", action="store_true",
                    help="分割・配当調整をしない実際の株価で取得")
     p.add_argument("--refresh-tickers", action="store_true", help="銘柄リストを強制再取得")
+    p.add_argument("--refresh", action="store_true",
+                   help="--catchup と併用。最新でも直近数日を取り直して上書きする（20:40 の確報値の回用）")
     p.add_argument("--catchup", action="store_true",
                    help="不足分だけ取得する（自動実行用）。最新なら何もせず終了する")
     args = p.parse_args()
@@ -540,7 +543,10 @@ def main():
     if args.catchup:
         expected = last_expected_session()
         have = latest_data_date()
-        if have and have >= expected.isoformat():
+        if have and have >= expected.isoformat() and args.refresh:
+            logging.info("確報値の取り直し（--refresh）：最終営業日 %s までを取り直して上書きします", expected)
+            have = (expected - timedelta(days=1)).isoformat()
+        elif have and have >= expected.isoformat():
             n_have, n_all = daily_coverage(expected.isoformat())
             if n_all and n_have >= n_all * MIN_COVERAGE:
                 logging.info("データは最新です（最終営業日 %s / 保存済み %s / %d/%d 銘柄）。何もしません",
