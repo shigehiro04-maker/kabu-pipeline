@@ -12,6 +12,14 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SITE="$DIR/data/charts"
+
+# 公開はクラウド（GitHub Actions）に一本化している場合、Mac からは公開しない（2026-11-25 追加）。
+# 両方が公開すると、履歴を1つにまとめ直して上書きするため、後から公開した側の内容で上書きされてしまう。
+# Mac から公開に戻すときは cloud/MAC_NO_DEPLOY を消す。
+if [ -z "${KABU_CLOUD:-}" ] && [ -f "$DIR/cloud/MAC_NO_DEPLOY" ]; then
+  echo "▶ 公開はクラウドの日次更新が行うため、Mac からは公開しません（cloud/MAC_NO_DEPLOY）"
+  exit 0
+fi
 REPO="${PAGES_REPO:-kabu-charts}"
 CHUNK="${PAGES_CHUNK:-400}"
 
