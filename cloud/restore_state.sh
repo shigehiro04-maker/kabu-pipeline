@@ -24,5 +24,5 @@ for i in 1 2 3; do
   sleep 20
 done
 "$OPENSSL" enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:KABU_STATE_PASS < "$WORK/$NAME" \
-  | $DEC | tar -xf - -C "$DIR"
-echo "✅ 展開しました（$(du -sh "$DIR" | cut -f1)）"
+  | $DEC | tar -xf - -C "${KABU_TARGET:-$DIR}"
+echo "✅ 展開しました（$(du -sh "${KABU_TARGET:-$DIR}" | cut -f1)）"
