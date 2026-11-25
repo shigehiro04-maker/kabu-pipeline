@@ -129,7 +129,9 @@ jobs:
             if [ -f logs/cloud_notify.txt ]; then echo; echo '### 通知'; sed 's/^/- /' logs/cloud_notify.txt; fi
             echo; echo '### この回の run_daily.log（失敗の行）'
             grep -F "$(date '+%F')" logs/run_daily.log | grep -E "失敗|中止|あきらめ" | sed 's/^/    /' | tail -40 || true
-          } >> "$GITHUB_STEP_SUMMARY"
+          } > "$RUNNER_TEMP/summary.md"
+          cat "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/summary.md"   # gh run view --log でも読めるように
 
       - name: 動いていることを記録（60日で自動停止されないように）
         if: always()
