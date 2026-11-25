@@ -1,0 +1,152 @@
+# 株分析の日次更新（Mac の run_daily.sh を GitHub のサーバー上で動かす）
+#   ・平日 16:37（日本時間）に自動実行。手動実行は Actions 画面の「Run workflow」から
+#   ・作業データは暗号化してこのリポジトリのリリース「state」に保存（cloud/save_state.sh）
+#   ・サイトの公開: 自動実行はリポジトリ変数 KABU_DEPLOY が 1 のときだけ。手動実行は「deploy」にチェック
+name: 株データの日次更新
+
+on:
+  schedule:
+    - cron: '37 7 * * 1-5'      # UTC 7:37 = 日本時間 16:37（平日）
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'GitHub Pages（kabu-charts）へ公開する'
+        type: boolean
+        default: false
+      save_state:
+        description: '作業データを保存する'
+        type: boolean
+        default: true
+
+concurrency:
+  group: kabu-daily
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  daily:
+    runs-on: macos-15
+    timeout-minutes: 330
+    env:
+      TZ: Asia/Tokyo
+      KABU_CLOUD: '1'
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      GH_TOKEN: ${{ github.token }}
+      KABU_STATE_REPO: ${{ github.repository }}
+      KABU_STATE_PASS: ${{ secrets.KABU_STATE_PASS }}
+      DEPLOY: ${{ (github.event_name == 'schedule' && vars.KABU_DEPLOY == '1') || (github.event_name == 'workflow_dispatch' && inputs.deploy) }}
+      SAVE_STATE: ${{ github.event_name == 'schedule' || inputs.save_state }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Mac と同じ場所に見えるようにする
+        run: |
+          ln -s "$GITHUB_WORKSPACE" "$HOME/株分析"
+          sudo ln -s "$HOME" /Users/shigenohiroto
+
+      - name: 道具を入れる（jquants・pigz）
+        env:
+          JQ_CRED: ${{ secrets.JQUANTS_CREDENTIALS }}
+        run: |
+          brew tap j-quants/tap
+          brew install j-quants/tap/jquants pigz
+          mkdir -p "$HOME/.config/jquants"
+          printf '%s' "$JQ_CRED" > "$HOME/.config/jquants/credentials.json"
+          chmod 600 "$HOME/.config/jquants/credentials.json"
+
+      - uses: actions/setup-python@v5
+        id: py
+        with:
+          python-version: '3.12'
+
+      - name: Python の環境をキャッシュから戻す
+        id: venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ steps.py.outputs.python-version }}-${{ hashFiles('cloud/requirements.txt') }}
+
+      - name: Python の環境を作る
+        if: steps.venv.outputs.cache-hit != 'true'
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q --upgrade pip
+          .venv/bin/pip install -q -r cloud/requirements.txt
+
+      - name: 作業データを取り出す
+        id: restore
+        run: |
+          bash cloud/restore_state.sh
+          # データに含まれる古いプログラムを、リポジトリの最新版で上書きする
+          git checkout -f -- .
+          rm -rf jpx_prices/.venv && ln -s ../.venv jpx_prices/.venv
+          rm -f logs/cloud_result.env logs/cloud_notify.txt
+          rmdir logs/run_daily.lock 2>/dev/null || true
+
+      - name: 公開中のサイトを取り出す
+        env:
+          DEPLOY_KEY: ${{ secrets.PAGES_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/kabu_pages
+          chmod 600 ~/.ssh/kabu_pages
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          echo "GIT_SSH_COMMAND=ssh -i $HOME/.ssh/kabu_pages -o IdentitiesOnly=yes" >> "$GITHUB_ENV"
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/kabu_pages -o IdentitiesOnly=yes"
+          rm -rf data/charts
+          git clone -q --depth 1 git@github.com:shigehiro04-maker/kabu-charts.git data/charts
+          git -C data/charts config user.name "kabu-charts bot"
+          git -C data/charts config user.email "kabu-charts@localhost"
+          if [ "$DEPLOY" != "true" ]; then
+            # 試験運用：公開しない（run_daily.sh は .git が無いと公開を飛ばす）
+            mv data/charts/.git "$RUNNER_TEMP/charts.git"
+            echo "公開はしません（試験運用）"
+          fi
+
+      - name: 日次更新（run_daily.sh）
+        id: run
+        continue-on-error: true
+        run: bash run_daily.sh
+
+      - name: 作業データを保存する
+        if: always() && steps.restore.outcome == 'success' && env.SAVE_STATE == 'true'
+        run: bash cloud/save_state.sh
+
+      - name: 結果のまとめ
+        if: always() && steps.restore.outcome == 'success'
+        run: |
+          {
+            echo "## 株データの日次更新 $(date '+%Y-%m-%d %H:%M')"
+            echo "- 公開: $DEPLOY"
+            [ -f logs/cloud_result.env ] && sed 's/^/- /' logs/cloud_result.env
+            echo "- 最新の日次ファイル: $(ls data/daily 2>/dev/null | sort | tail -1)"
+            echo "- 株価CSVの最新日（7203）: $(tail -1 data/prices/7203.csv 2>/dev/null | cut -d, -f1)"
+            if [ -f logs/cloud_notify.txt ]; then echo; echo '### 通知'; sed 's/^/- /' logs/cloud_notify.txt; fi
+            echo; echo '### この回の run_daily.log（失敗の行）'
+            grep -F "$(date '+%F')" logs/run_daily.log | grep -E "失敗|中止|あきらめ" | sed 's/^/    /' | tail -40 || true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 動いていることを記録（60日で自動停止されないように）
+        if: always()
+        run: |
+          git config user.name "kabu-pipeline bot"
+          git config user.email "kabu-pipeline@localhost"
+          git fetch -q --depth 1 origin status 2>/dev/null || true
+          d=$(mktemp -d); cd "$d"; git init -q; git checkout -q -b status
+          date '+%F %T' > last_run.txt
+          git add last_run.txt; git commit -q -m "last run $(date '+%F %T')"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" status
+
+      - name: 失敗していたら知らせる（メール）
+        if: always() && steps.restore.outcome == 'success'
+        run: |
+          [ -f logs/cloud_result.env ] || { echo "run_daily.sh が最後まで動きませんでした"; exit 1; }
+          . logs/cloud_result.env
+          [ "$STATUS" = 0 ] || { echo "株価の取得に失敗しました（STATUS=$STATUS）"; exit 1; }
+          [ "$DEPLOY_OK" = 1 ] || { echo "サイトの公開に失敗しました"; exit 1; }
+          echo "OK（一部失敗 ${LEFT} 件。詳しくはまとめを参照）"

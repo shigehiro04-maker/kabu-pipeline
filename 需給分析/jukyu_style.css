@@ -1,0 +1,171 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap");
+
+:root{color-scheme:light;--page:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;
+ --grid:#e1e0d9;--border:rgba(11,11,11,.10);--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#8a63d2;
+ --good:#0ca30c;--warning:#fab219;--critical:#d03b3b;--up:#c93a3a;--dn:#2E7D6B;--wash:rgba(42,120,214,.08);
+ --bull:#c93a3a;--bullbg:rgba(201,58,58,.13);--bear:#2E7D6B;--bearbg:rgba(46,125,107,.15);
+ --warn:#b77800;--warnbg:rgba(237,161,0,.18);--neu:#898781;--neubg:rgba(137,135,129,.12)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;
+ --ink:#fff;--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--border:rgba(255,255,255,.10);--s1:#3987e5;--s2:#d95926;
+ --s3:#199e70;--s4:#c98500;--s5:#9b7be0;--critical:#e66767;--up:#e66767;--dn:#3FA58C;--wash:rgba(57,135,229,.14);
+ --bull:#e66767;--bullbg:rgba(230,103,103,.18);--bear:#3FA58C;--bearbg:rgba(63,165,140,.18);--warn:#e0a52e;--warnbg:rgba(224,165,46,.18);--neubg:rgba(160,158,150,.14)}}
+:root[data-theme="dark"]{color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--muted:#898781;
+ --grid:#2c2c2a;--border:rgba(255,255,255,.10);--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#9b7be0;
+ --critical:#e66767;--up:#e66767;--dn:#3FA58C;--wash:rgba(57,135,229,.14);
+ --bull:#e66767;--bullbg:rgba(230,103,103,.18);--bear:#3FA58C;--bearbg:rgba(63,165,140,.18);--warn:#e0a52e;--warnbg:rgba(224,165,46,.18);--neubg:rgba(160,158,150,.14)}
+*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);
+ font:14px/1.55 system-ui,-apple-system,"Hiragino Sans","Segoe UI",sans-serif}
+.wrap{max-width:1200px;margin:0 auto;padding:20px 16px 48px}
+header{margin-bottom:12px}
+h1{font-size:21px;margin:0 0 2px}h2{font-size:16px;margin:0 0 10px}h3{font-size:14px;margin:14px 0 6px;color:var(--ink2)}
+.meta{color:var(--muted);font-size:12px;font-weight:400}
+nav.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px;position:sticky;top:0;z-index:5;background:var(--page);padding:8px 0}
+nav.tabs a{padding:6px 14px;border-radius:999px;border:1px solid var(--border);color:var(--ink2);text-decoration:none;font-size:13px}
+nav.tabs a.on{background:var(--ink);color:var(--page);border-color:var(--ink)}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;color:var(--ink2);font-weight:600;border-bottom:1px solid var(--grid);padding:6px;white-space:nowrap;cursor:pointer;user-select:none}
+.tbl th.sorted::after{content:" ▾";color:var(--s1)}.tbl th.sorted.asc::after{content:" ▴"}
+.tbl td{border-bottom:1px solid var(--grid);padding:6px;vertical-align:middle}
+.tbl td.n,.tbl th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl tr.rw{cursor:pointer}.tbl tr.rw:hover td{background:var(--wash)}
+.scroll{overflow-x:auto}
+.badge{display:inline-block;border-radius:999px;padding:1px 9px;font-size:12px;border:1px solid var(--border);white-space:nowrap;font-weight:600}
+.v-踏み上げ候補,.v-好需給{background:var(--bullbg);color:var(--bull);border-color:transparent}
+.v-買残重い,.v-投げ警戒,.v-需給悪い{background:var(--bearbg);color:var(--bear);border-color:transparent}
+.v-規制・注意{background:var(--warnbg);color:var(--warn);border-color:transparent}
+.v-中立{color:var(--ink2)}
+.up{color:var(--up)}.dn{color:var(--dn)}
+.tip{color:var(--muted);font-size:12px;margin:6px 0 0}
+details{margin-top:10px}summary{cursor:pointer;color:var(--ink2);font-size:13px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media (max-width:820px){.two{grid-template-columns:1fr}}
+.chartbox{position:relative;height:250px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.chips button{font:inherit;font-size:13px;padding:5px 11px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);cursor:pointer}
+.chips button.on{background:var(--s1);color:#fff;border-color:var(--s1)}
+.chips button.on .meta{color:rgba(255,255,255,.8)}
+.chips.sm button{font-size:12px;padding:3px 9px}
+input[type=search]{font:inherit;padding:9px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--ink);width:min(440px,100%)}
+#sugg{margin-top:6px;display:flex;flex-wrap:wrap;gap:6px}
+#sugg button{font:inherit;font-size:13px;padding:3px 9px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--ink);cursor:pointer}
+.sec{display:none}.sec.on{display:block}
+a{color:var(--s1)}
+/* 色の凡例・信号 */
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:1px;flex:none}
+.z-bull{--zc:var(--bull);--zb:var(--bullbg)}.z-bear{--zc:var(--bear);--zb:var(--bearbg)}
+.z-warn{--zc:var(--warn);--zb:var(--warnbg)}.z-neu{--zc:var(--neu);--zb:var(--neubg)}
+.dot{background:var(--zc,var(--neu))}
+.zt{color:var(--zc)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink2)}
+/* 地合いカード */
+.mood{display:grid;grid-template-columns:220px 1fr;gap:18px;align-items:center}
+.mood .verdict{border-radius:12px;padding:14px 16px;background:var(--zb)}
+.mood .verdict .w{font-size:26px;font-weight:800;color:var(--zc);line-height:1.2}
+.mood .verdict .s{font-size:12px;color:var(--ink2);margin-top:4px}
+.sig{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.sig>div{border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:var(--surface)}
+.sig .k{font-size:12px;color:var(--ink2);display:flex;align-items:center}
+.sig .v{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:1px}
+.sig .s{font-size:12px;color:var(--zc);line-height:1.4}
+.dist{margin-top:14px}
+.dist .bar{display:flex;height:22px;border-radius:6px;overflow:hidden;cursor:pointer}
+.dist .bar div{display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;white-space:nowrap;overflow:hidden;min-width:3px}
+.dist .lab{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink2);margin-top:6px}
+.dist .lab span{cursor:pointer}
+@media (max-width:900px){.mood{grid-template-columns:1fr}.sig{grid-template-columns:repeat(2,1fr)}}
+/* 銘柄の見出し */
+.head{display:grid;grid-template-columns:1fr 320px;gap:18px;align-items:center}
+.head .name{font-size:20px;font-weight:800}
+.head .px{font-size:15px;margin-top:4px;font-variant-numeric:tabular-nums}
+.gauge .lbl{display:flex;justify-content:space-between;font-size:12px;color:var(--ink2)}
+.gauge .big{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.track{position:relative;height:10px;border-radius:999px;display:flex;overflow:visible;margin:8px 0 4px}
+.track>i{display:block;height:100%}
+.track>i:first-child{border-radius:999px 0 0 999px}.track>i:last-of-type{border-radius:0 999px 999px 0}
+.track .mk{position:absolute;top:50%;width:16px;height:16px;border-radius:50%;background:var(--surface);border:3px solid var(--ink);transform:translate(-50%,-50%)}
+.track .zb-bull{background:var(--bullbg)}.track .zb-bear{background:var(--bearbg)}.track .zb-warn{background:var(--warnbg)}.track .zb-neu{background:var(--neubg)}
+.gauge .ax{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
+.facts{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--ink2);margin-top:12px;padding-top:10px;border-top:1px solid var(--grid)}
+.facts b{color:var(--ink);font-variant-numeric:tabular-nums}
+@media (max-width:760px){.head{grid-template-columns:1fr}}
+/* スコア内訳 */
+.brk{display:grid;grid-template-columns:1fr 60px 1fr;gap:4px 8px;font-size:12.5px;align-items:center}
+.brk .l{text-align:right;color:var(--ink2)}.brk .r{color:var(--ink2)}
+.brk .c{text-align:center;font-weight:700;font-variant-numeric:tabular-nums}
+.brk .bn,.brk .bp{height:14px;border-radius:3px}
+.brk .bn{background:var(--bear);margin-left:auto}.brk .bp{background:var(--bull)}
+.brk .hd{font-size:12px;color:var(--muted)}
+/* 指標ゲージ */
+.mt{display:grid;grid-template-columns:150px 110px minmax(120px,1fr) 210px;gap:4px 14px;align-items:center}
+.mt>div{padding:7px 0;border-bottom:1px solid var(--grid)}
+.mt .k{font-size:13px;font-weight:600}.mt .k small{display:block;font-weight:400;color:var(--muted);font-size:11px}
+.mt .v{font-size:16px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mt .t{font-size:12.5px;color:var(--zc);font-weight:600}
+.mt .track{margin:0}
+@media (max-width:760px){.mt{grid-template-columns:1fr auto;gap:2px 10px}.mt>div{border-bottom:0;padding:2px 0}
+ .mt .k,.mt .v{padding-top:10px}
+ .mt .tw{grid-column:1/-1}.mt .t{grid-column:1/-1;padding-bottom:8px;border-bottom:1px solid var(--grid)}}
+/* 価格帯別出来高 */
+.vp{display:grid;grid-template-columns:64px 1fr;gap:2px 8px;font-size:11.5px;align-items:center;font-variant-numeric:tabular-nums}
+.vp .b{height:9px;background:var(--s1);border-radius:0 3px 3px 0;opacity:.6}.vp .b.cur{background:var(--s2);opacity:1}
+.vp .p{text-align:right;color:var(--ink2)}.vp .p.cur{color:var(--s2);font-weight:700}
+/* ランキング */
+.rkbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.rkbar select{font:inherit;font-size:13px;padding:4px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--ink)}
+.rk .nm b{font-weight:700}.rk .nm small{display:block;color:var(--muted);font-size:11px}
+.mini{display:inline-flex;align-items:center;gap:6px}
+.mini i{display:inline-block;width:46px;height:6px;border-radius:3px;background:var(--neubg);position:relative;overflow:hidden}
+.mini i b{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--zc)}
+.cv{display:inline-flex;align-items:center;justify-content:flex-end;gap:5px}
+.cv .dot{margin:0;width:7px;height:7px}
+.rk td.key{background:var(--wash)}
+@media (max-width:700px){
+ .rk thead{display:none}.rk,.rk tbody{display:block}
+ .rk tr.rw{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px 10px;padding:10px 2px;border-bottom:1px solid var(--grid)}
+ .rk td{border:0;padding:0;text-align:left!important;font-size:12.5px}
+ .rk td.nm{grid-column:1/3}.rk td.bd{grid-column:3;text-align:right!important}
+ .rk td[data-l]::before{content:attr(data-l);display:block;color:var(--muted);font-size:10.5px}
+ .rk td.key{background:none}.rk td.hide-sp{display:none}}
+/* 市場 */
+.mult{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.mult>div{border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.mult .hd{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.mult .hd b{font-size:14px}.mult .now{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.mult .sub{font-size:12px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.mult .cb{position:relative;height:110px;margin-top:6px}
+.mult .trend{font-size:12px;font-weight:600;color:var(--zc)}
+@media (max-width:900px){.mult{grid-template-columns:repeat(2,1fr)}}@media (max-width:560px){.mult{grid-template-columns:1fr}}
+.hl{font-size:13.5px;margin:0 0 10px;padding:8px 12px;border-radius:8px;background:var(--zb);border-left:4px solid var(--zc)}
+/* 業種 */
+#sect td.h{background:var(--zb)}
+#sect td:first-child,#sect th:first-child{position:sticky;left:0;background:var(--surface);z-index:1}
+@media (max-width:600px){.tbl{font-size:12px}.mood .verdict .w{font-size:22px}.sig .v{font-size:17px}}
+
+.vpwrap{max-width:560px}
+@media (max-width:600px){nav.tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}nav.tabs a{white-space:nowrap}
+ .dist .bar div{font-size:0}}
+.chips button:disabled{opacity:.5;cursor:not-allowed}
+.dt{font-size:12.5px;color:var(--ink2);margin:0 0 8px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface)}
+.dt b{color:var(--ink);font-weight:600}
+.head{grid-template-columns:1fr minmax(0,620px)}
+.gauges{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.gauge .axr{position:relative;height:14px;font-size:11px;color:var(--muted)}
+.gauge .axr span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.gauge .axr span:first-child{transform:none}.gauge .axr span:last-child{transform:translateX(-100%)}
+@media (max-width:760px){.head{grid-template-columns:1fr}}
+@media (max-width:520px){.gauges{grid-template-columns:1fr;gap:14px}}
+
+/* ===== 2026-11 デザイン刷新（トップ画面と共通）：黒／白地、枠線なしのカード、数字は Inter の極太 ===== */
+:root{--page:#f3f4f6;--surface:#fff;--ink:#0c0d10;--ink2:#3d4148;--muted:#5b6068;--grid:#dfe2e7;--border:rgba(12,13,16,.13);--up:#b91c24;--dn:#08705a;--wash:rgba(12,13,16,.05);--bull:#b91c24;--bear:#08705a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--page:#050608;--surface:#101216;--ink:#f2f4f8;--ink2:#c6cbd6;--muted:#8f96a3;--grid:#23262d;--border:rgba(255,255,255,.13);--up:#ff7378;--dn:#3fd0a4;--wash:rgba(255,255,255,.06);--bull:#ff7378;--bear:#3fd0a4}}
+:root[data-theme="dark"]{--page:#050608;--surface:#101216;--ink:#f2f4f8;--ink2:#c6cbd6;--muted:#8f96a3;--grid:#23262d;--border:rgba(255,255,255,.13);--up:#ff7378;--dn:#3fd0a4;--wash:rgba(255,255,255,.06);--bull:#ff7378;--bear:#3fd0a4}
+body{font-family:Inter,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+h1{font-weight:800;letter-spacing:.02em}h2{font-weight:800}
+@media (min-width:701px){h1{font-size:24px}}
+.panel{border:0;border-radius:14px}
+nav.tabs a{font-weight:600}nav.tabs a.on{font-weight:800}
+.tbl th{font-weight:800;border-bottom:2px solid var(--ink)}
+/* 銘柄の内訳は別画面（jukyu.html#コード）で、その銘柄だけを出す */
+body.solo #mood,body.solo #tabs,body.solo #qbox{display:none}
+#qbox{margin-bottom:12px}
+#qbox #q{width:100%;max-width:none;font-weight:600}
