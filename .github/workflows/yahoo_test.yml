@@ -1,0 +1,43 @@
+# Yahoo から全銘柄の株価が取れるかの試験（手動実行のみ・データは保存しない）
+name: Yahoo取得の試験
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      TZ: Asia/Tokyo
+      GH_TOKEN: ${{ github.token }}
+      KABU_STATE_REPO: ${{ github.repository }}
+      KABU_STATE_PASS: ${{ secrets.KABU_STATE_PASS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        id: py
+        with:
+          python-version: '3.12'
+      - name: Python の環境をキャッシュから戻す
+        id: venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ steps.py.outputs.python-version }}-${{ hashFiles('cloud/requirements.txt') }}
+      - name: Python の環境を作る
+        if: steps.venv.outputs.cache-hit != 'true'
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q --upgrade pip
+          .venv/bin/pip install -q -r cloud/requirements.txt
+      - name: 作業データを取り出す（銘柄リストのため）
+        run: |
+          brew install pigz >/dev/null 2>&1 || true
+          bash cloud/restore_state.sh
+          git checkout -f -- .
+      - name: Yahoo から全銘柄の直近10日分を取る
+        run: .venv/bin/python cloud/yahoo_test.py
