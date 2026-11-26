@@ -1,6 +1,6 @@
 # 米国株分析の日次更新（Mac の ~/米国株分析/run_daily.sh を GitHub のサーバー上で動かす）
-#   ・火〜土 7:30（日本時間）に Cloudflare Workers（kabu-dispatch）が「auto」付きで実行を始める。
-#     GitHub の定時実行（8:10）は予備で、直前12時間に手動・auto の実行があれば何もしない。
+#   ・火〜土の朝、米国の引けの30分後（冬時間 6:30・夏時間 5:30、日本時間）に Cloudflare Workers（kabu-dispatch）が
+#     「auto」付きで実行を始める。GitHub の定時実行（7:10）は予備で、直前12時間に手動・auto の実行があれば何もしない。
 #   ・米国版のプログラムは us-pipeline（Mac から cloud/push_us_code.sh で送る）、
 #     東証版のプログラム（Python 環境・株価指数など共用部分）はこのリポジトリ。
 #   ・作業データ: 米国版はリリース「us-state」に保存。東証版の作業データ（リリース「state」）は読むだけで保存しない。
@@ -9,7 +9,7 @@ name: 米国株データの日次更新
 
 on:
   schedule:
-    - cron: '10 23 * * 1-5'     # UTC 23:10 = 日本時間 8:10（火〜土。予備）
+    - cron: '10 22 * * 1-5'     # UTC 22:10 = 日本時間 7:10（火〜土。予備）
   workflow_dispatch:
     inputs:
       deploy:

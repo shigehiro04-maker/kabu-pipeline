@@ -7,8 +7,8 @@ preview_urls = false
 
 [triggers]
 # UTC。06:40 = 日本時間 15:40（速報値）、11:40 = 日本時間 20:40（確報値の取り直し）。平日のみ
-# 22:30 = 日本時間の翌朝 7:30（米国株。UTC の月〜金 = 日本時間の火〜土）
-crons = ["40 6 * * MON-FRI", "40 11 * * MON-FRI", "30 22 * * MON-FRI"]
+# 20:30 / 21:30 = 日本時間の翌朝 5:30（夏時間）/ 6:30（冬時間）。米国株。index.js が片方だけ動かす
+crons = ["40 6 * * MON-FRI", "40 11 * * MON-FRI", "30 20 * * MON-FRI", "30 21 * * MON-FRI"]
 
 [observability]
 enabled = true
