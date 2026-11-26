@@ -49,6 +49,8 @@ jobs:
         run: |
           ln -s "$GITHUB_WORKSPACE" "$HOME/株分析"
           sudo ln -s "$HOME" /Users/shigenohiroto
+          # fetch_related_yahoo.py が ~/米国株分析/us_fetch_profile.py を読むので、その写しを置く
+          mkdir -p "$HOME/米国株分析" && cp cloud/us/us_fetch_profile.py "$HOME/米国株分析/"
 
       - name: 道具を入れる（jquants・pigz）
         env:

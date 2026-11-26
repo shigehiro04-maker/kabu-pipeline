@@ -23,6 +23,9 @@ g config user.name >/dev/null 2>&1 || g config user.name "shigehiro04-maker"
 g config user.email >/dev/null 2>&1 || g config user.email "shigehiro04-maker@users.noreply.github.com"
 
 cd "$DIR"
+# 米国株分析と共用のモジュール（fetch_related_yahoo.py が ~/米国株分析 から読む）をクラウド用に写す
+mkdir -p cloud/us
+cp -p "$HOME/米国株分析/us_fetch_profile.py" cloud/us/ 2>/dev/null || echo "※ ~/米国株分析/us_fetch_profile.py が見つかりません（前回の写しを使います）"
 # 送る対象: パイプラインで使うフォルダのプログラムと設定だけ
 LIST=$(mktemp)
 find . \( -path ./.venv -o -path ./jpx_prices/.venv -o -path ./backup -o -path "./Claude outputs" \
