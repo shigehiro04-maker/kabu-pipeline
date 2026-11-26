@@ -1,7 +1,7 @@
 # 株分析の日次更新（Mac の run_daily.sh を GitHub のサーバー上で動かす）
 #   ・平日 15:40（速報値）・20:40（確報値の取り直し）（日本時間）に、Cloudflare Workers（kabu-dispatch）が
 #     「auto」付きで実行を始める（GitHub の定時実行は混むと何時間も遅れるため）。
-#     GitHub の定時実行（16:10・21:10）は予備で、直前3時間に auto の実行があれば何もしない。
+#     GitHub の定時実行（16:10・21:10）は予備で、直前12時間に手動・auto の実行があれば何もしない。
 #   ・手動実行は Actions 画面の「Run workflow」から
 #   ・作業データは暗号化してこのリポジトリのリリース「state」に保存（cloud/save_state.sh）
 #   ・サイトの公開: 自動実行はリポジトリ変数 KABU_DEPLOY が 1 のときだけ。手動実行は「deploy」にチェック
@@ -35,7 +35,8 @@ permissions:
   actions: read
 
 jobs:
-  # 予備の定時実行のとき、直前3時間に Cloudflare からの起動（auto）があれば本体を動かさない
+  # 予備の定時実行のとき、直前12時間に Cloudflare などからの起動があれば本体を動かさない
+  # （GitHub の定時実行は何時間も遅れて夜中に動くことがあるため、3時間では足りなかった。2026-11-27）
   gate:
     runs-on: ubuntu-latest
     outputs:
@@ -47,7 +48,7 @@ jobs:
         run: |
           skip=0
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            since=$(date -u -d '3 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+            since=$(date -u -d '12 hours ago' +%Y-%m-%dT%H:%M:%SZ)
             n=$(gh run list -R "$GITHUB_REPOSITORY" --workflow daily.yml --event workflow_dispatch \
                   --created ">=$since" --json databaseId --jq 'length')
             [ "${n:-0}" -gt 0 ] && skip=1
