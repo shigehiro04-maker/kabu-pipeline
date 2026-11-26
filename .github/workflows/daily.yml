@@ -1,13 +1,16 @@
 # 株分析の日次更新（Mac の run_daily.sh を GitHub のサーバー上で動かす）
-#   ・平日 15:40（速報値）・20:40（確報値の取り直し）（日本時間）に自動実行。手動実行は Actions 画面の「Run workflow」から
+#   ・平日 15:40（速報値）・20:40（確報値の取り直し）（日本時間）に、Cloudflare Workers（kabu-dispatch）が
+#     「auto」付きで実行を始める（GitHub の定時実行は混むと何時間も遅れるため）。
+#     GitHub の定時実行（16:10・21:10）は予備で、直前3時間に auto の実行があれば何もしない。
+#   ・手動実行は Actions 画面の「Run workflow」から
 #   ・作業データは暗号化してこのリポジトリのリリース「state」に保存（cloud/save_state.sh）
 #   ・サイトの公開: 自動実行はリポジトリ変数 KABU_DEPLOY が 1 のときだけ。手動実行は「deploy」にチェック
 name: 株データの日次更新
 
 on:
   schedule:
-    - cron: '40 6 * * 1-5'      # UTC 6:40 = 日本時間 15:40（平日・速報値）
-    - cron: '40 11 * * 1-5'     # UTC 11:40 = 日本時間 20:40（平日・確報値の取り直し）
+    - cron: '10 7 * * 1-5'      # UTC 7:10 = 日本時間 16:10（予備。15:40 の Cloudflare 起動が無かったときだけ動く）
+    - cron: '10 12 * * 1-5'     # UTC 12:10 = 日本時間 21:10（予備。20:40 の Cloudflare 起動が無かったときだけ動く）
   workflow_dispatch:
     inputs:
       deploy:
@@ -18,6 +21,10 @@ on:
         description: '作業データを保存する'
         type: boolean
         default: true
+      auto:
+        description: '定時実行として扱う（Cloudflare からの起動用。公開は KABU_DEPLOY に従う）'
+        type: boolean
+        default: false
 
 concurrency:
   group: kabu-daily
@@ -25,9 +32,32 @@ concurrency:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
+  # 予備の定時実行のとき、直前3時間に Cloudflare からの起動（auto）があれば本体を動かさない
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.chk.outputs.skip }}
+    steps:
+      - id: chk
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          skip=0
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            since=$(date -u -d '3 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+            n=$(gh run list -R "$GITHUB_REPOSITORY" --workflow daily.yml --event workflow_dispatch \
+                  --created ">=$since" --json databaseId --jq 'length')
+            [ "${n:-0}" -gt 0 ] && skip=1
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+          echo "skip=$skip"
+
   daily:
+    needs: gate
+    if: needs.gate.outputs.skip != '1'
     runs-on: macos-15
     timeout-minutes: 330
     env:
@@ -38,8 +68,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       KABU_STATE_REPO: ${{ github.repository }}
       KABU_STATE_PASS: ${{ secrets.KABU_STATE_PASS }}
-      DEPLOY: ${{ (github.event_name == 'schedule' && vars.KABU_DEPLOY == '1') || (github.event_name == 'workflow_dispatch' && inputs.deploy) }}
-      SAVE_STATE: ${{ github.event_name == 'schedule' || inputs.save_state }}
+      DEPLOY: ${{ ((github.event_name == 'schedule' || inputs.auto) && vars.KABU_DEPLOY == '1') || (github.event_name == 'workflow_dispatch' && !inputs.auto && inputs.deploy) }}
+      SAVE_STATE: ${{ github.event_name == 'schedule' || inputs.auto || inputs.save_state }}
     steps:
       - uses: actions/checkout@v4
         with:
