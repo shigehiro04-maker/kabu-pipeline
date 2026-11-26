@@ -7,9 +7,12 @@
 #   世代: state_YYYYMMDD_HHMM.enc を KEEP 個残し、最新を state_latest.enc として置く
 set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 米国版などほかのフォルダにも使えるように、保存元・リリース名・除外リストを環境変数で変えられる
+DIR="${KABU_STATE_DIR:-$(dirname "$HERE")}"
+EXCL="${KABU_STATE_EXCLUDES:-$HERE/state_excludes.txt}"
 REPO="${KABU_STATE_REPO:-shigehiro04-maker/kabu-pipeline}"
-TAG=state
+TAG="${KABU_STATE_TAG:-state}"
 KEEP="${KABU_KEEP:-7}"
 STAMP=$(TZ=Asia/Tokyo date +%Y%m%d_%H%M)
 WORK="${RUNNER_TEMP:-/tmp}/kabu_state_$$"
@@ -23,7 +26,7 @@ COMP="gzip -6"; command -v pigz >/dev/null 2>&1 && COMP="pigz -6"
 cd "$DIR"
 
 echo "▶ 作業データを圧縮・暗号化しています"
-tar --exclude-from=cloud/state_excludes.txt --exclude='__pycache__' --exclude='*.pre_*' \
+tar --exclude-from="$EXCL" --exclude='__pycache__' --exclude='*.pre_*' \
     --exclude='*.zip' --exclude='.DS_Store' --exclude='_to_delete' -cf - . \
   | $COMP \
   | "$OPENSSL" enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:KABU_STATE_PASS > "$OUT"

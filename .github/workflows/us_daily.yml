@@ -1,0 +1,169 @@
+# 米国株分析の日次更新（Mac の ~/米国株分析/run_daily.sh を GitHub のサーバー上で動かす）
+#   ・火〜土 7:30（日本時間）に Cloudflare Workers（kabu-dispatch）が「auto」付きで実行を始める。
+#     GitHub の定時実行（8:10）は予備で、直前12時間に手動・auto の実行があれば何もしない。
+#   ・米国版のプログラムは us-pipeline（Mac から cloud/push_us_code.sh で送る）、
+#     東証版のプログラム（Python 環境・株価指数など共用部分）はこのリポジトリ。
+#   ・作業データ: 米国版はリリース「us-state」に保存。東証版の作業データ（リリース「state」）は読むだけで保存しない。
+#   ・サイトの公開: auto・定時実行はリポジトリ変数 KABU_US_DEPLOY が 1 のときだけ。手動実行は「deploy」にチェック
+name: 米国株データの日次更新
+
+on:
+  schedule:
+    - cron: '10 23 * * 1-5'     # UTC 23:10 = 日本時間 8:10（火〜土。予備）
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'GitHub Pages（us-charts）へ公開する'
+        type: boolean
+        default: false
+      save_state:
+        description: '作業データを保存する'
+        type: boolean
+        default: true
+      auto:
+        description: '定時実行として扱う（Cloudflare からの起動用。公開は KABU_US_DEPLOY に従う）'
+        type: boolean
+        default: false
+
+concurrency:
+  group: us-daily
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.chk.outputs.skip }}
+    steps:
+      - id: chk
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          skip=0
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            since=$(date -u -d '12 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+            n=$(gh run list -R "$GITHUB_REPOSITORY" --workflow us_daily.yml --event workflow_dispatch \
+                  --created ">=$since" --json databaseId --jq 'length')
+            [ "${n:-0}" -gt 0 ] && skip=1
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+          echo "skip=$skip"
+
+  us:
+    needs: gate
+    if: needs.gate.outputs.skip != '1'
+    runs-on: macos-15
+    timeout-minutes: 330
+    env:
+      TZ: Asia/Tokyo
+      KABU_CLOUD: '1'
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      GH_TOKEN: ${{ github.token }}
+      KABU_STATE_REPO: ${{ github.repository }}
+      KABU_STATE_PASS: ${{ secrets.KABU_STATE_PASS }}
+      DEPLOY: ${{ ((github.event_name == 'schedule' || inputs.auto) && vars.KABU_US_DEPLOY == '1') || (github.event_name == 'workflow_dispatch' && !inputs.auto && inputs.deploy) }}
+      SAVE_STATE: ${{ github.event_name == 'schedule' || inputs.auto || inputs.save_state }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Mac と同じ場所に見えるようにする
+        run: |
+          ln -s "$GITHUB_WORKSPACE" "$HOME/株分析"
+          sudo ln -s "$HOME" /Users/shigenohiroto
+          git clone -q --depth 1 https://github.com/shigehiro04-maker/us-pipeline.git "$HOME/米国株分析"
+
+      - name: 道具を入れる（pigz）
+        run: brew install pigz
+
+      - uses: actions/setup-python@v5
+        id: py
+        with:
+          python-version: '3.12'
+
+      - name: Python の環境をキャッシュから戻す
+        id: venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ steps.py.outputs.python-version }}-${{ hashFiles('cloud/requirements.txt') }}
+
+      - name: Python の環境を作る
+        if: steps.venv.outputs.cache-hit != 'true'
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q --upgrade pip
+          .venv/bin/pip install -q -r cloud/requirements.txt
+
+      - name: 作業データを取り出す（東証版は読むだけ・米国版）
+        id: restore
+        run: |
+          # 東証版：米国版が使う共用データ（株価指数・ドル円・会社情報など）のため
+          bash cloud/restore_state.sh
+          git checkout -f -- .
+          # 米国版
+          KABU_STATE_TAG=us-state KABU_STATE_DIR="$HOME/米国株分析" bash cloud/restore_state.sh
+          git -C "$HOME/米国株分析" checkout -f -- .
+          rmdir "$HOME/米国株分析/logs/run_daily.lock" 2>/dev/null || true
+
+      - name: 公開中のサイトを取り出す
+        env:
+          DEPLOY_KEY: ${{ secrets.US_PAGES_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/us_pages
+          chmod 600 ~/.ssh/us_pages
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          echo "GIT_SSH_COMMAND=ssh -i $HOME/.ssh/us_pages -o IdentitiesOnly=yes" >> "$GITHUB_ENV"
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/us_pages -o IdentitiesOnly=yes"
+          S="$HOME/米国株分析/data/charts"
+          rm -rf "$S"
+          git clone -q --depth 1 git@github.com:shigehiro04-maker/us-charts.git "$S"
+          git -C "$S" config user.name "us-charts bot"
+          git -C "$S" config user.email "us-charts@localhost"
+          if [ "$DEPLOY" != "true" ]; then
+            mv "$S/.git" "$RUNNER_TEMP/us-charts.git"
+            echo "公開はしません（試験運用）"
+          fi
+
+      - name: 日次更新（米国株分析/run_daily.sh）
+        id: run
+        continue-on-error: true
+        run: |
+          echo "START_LINE=$(( $(wc -l < "$HOME/米国株分析/logs/run_daily.log" 2>/dev/null || echo 0) + 1 ))" >> "$GITHUB_ENV"
+          bash "$HOME/米国株分析/run_daily.sh"
+
+      - name: 作業データを保存する
+        if: always() && steps.restore.outcome == 'success' && env.SAVE_STATE == 'true'
+        run: KABU_STATE_TAG=us-state KABU_STATE_DIR="$HOME/米国株分析" KABU_STATE_EXCLUDES="$GITHUB_WORKSPACE/cloud/us_state_excludes.txt" bash cloud/save_state.sh
+
+      - name: 結果のまとめ
+        if: always() && steps.restore.outcome == 'success'
+        run: |
+          U="$HOME/米国株分析"
+          tail -n +"$START_LINE" "$U/logs/run_daily.log" > "$RUNNER_TEMP/thisrun.log" 2>/dev/null || true
+          {
+            echo "## 米国株データの日次更新 $(date '+%Y-%m-%d %H:%M')"
+            echo "- 公開: $DEPLOY"
+            echo "- 株価取得: $(grep -h '完了: 成功' "$U"/logs/fetch_$(date +%F).log 2>/dev/null | tail -1 | sed 's/^\[[^]]*\] //')"
+            echo "- AAPL の最新日: $(tail -1 "$U/data/prices/AAPL.csv" 2>/dev/null | cut -d, -f1)"
+            echo; echo '### この回の run_daily.log'
+            sed 's/^/    /' "$RUNNER_TEMP/thisrun.log"
+          } > "$RUNNER_TEMP/summary.md"
+          cat "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/summary.md"
+
+      - name: 失敗していたら知らせる（メール）
+        if: always() && steps.restore.outcome == 'success'
+        run: |
+          L="$RUNNER_TEMP/thisrun.log"
+          grep -q "終了" "$L" || { echo "run_daily.sh が最後まで動きませんでした"; exit 1; }
+          grep -q "株価の取得に失敗" "$L" && { echo "株価の取得に失敗しました"; exit 1; }
+          if [ "$DEPLOY" = "true" ] && grep -q "GitHub Pages への公開に失敗" "$L"; then echo "サイトの公開に失敗しました"; exit 1; fi
+          echo "OK（失敗の行 $(grep -c 失敗 "$L") 件。詳しくはまとめを参照）"
