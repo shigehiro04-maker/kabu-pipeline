@@ -190,6 +190,43 @@ def step_ok(d, ex_date):
     return abs(r - 1) <= MAX_STEP, r
 
 
+def actual_step(d, around, k, days=20):
+    """CSV の around（台帳・Yahoo の権利落ち日）の前後 days 日に、分割比 k（未調整のまま）か 1/k（二重に割った）の
+    段差が残っていれば (その日付, 前日終値÷当日終値) を返す。Yahoo の権利落ち日が実際と数日ずれることがあるため
+    （2026-11 のキーエンス 6861 は Yahoo が 11-19、実際の値下がりは 11-16）。"""
+    import math
+    if not k or k <= 0:
+        return None
+    lo = (pd.Timestamp(around) - timedelta(days=days)).strftime("%Y-%m-%d")
+    hi = (pd.Timestamp(around) + timedelta(days=days)).strftime("%Y-%m-%d")
+    x = d[(d["date"] >= lo) & (d["date"] <= hi)].copy()
+    x = x[pd.to_numeric(x["volume"], errors="coerce").fillna(0) > 0]
+    cl = pd.to_numeric(x["close"], errors="coerce").values
+    dates = x["date"].values
+    best = None
+    for i in range(1, len(cl)):
+        if cl[i - 1] > 0 and cl[i] > 0:
+            r = cl[i - 1] / cl[i]
+            if r > JUMP or r < 1 / JUMP:
+                for t in (k, 1 / k):
+                    if abs(math.log(r / t)) < math.log(1.3) and (best is None or abs(math.log(r)) > abs(math.log(best[1]))):
+                        best = (dates[i], r, t)
+    return best
+
+
+def realign(d, step_date, v):
+    """step_date より前の行を ÷v（出来高は ×v）して段差を消した DataFrame を返す。"""
+    d = d.copy()
+    for c in PX + ["volume"]:
+        d[c] = pd.to_numeric(d[c], errors="coerce")
+    pre = d["date"] < step_date
+    for c in PX:
+        d.loc[pre, c] = (d.loc[pre, c] / v).round(2)
+    d.loc[pre, "volume"] = (d.loc[pre, "volume"] * v).round()
+    d["volume"] = d["volume"].astype("Int64")
+    return d
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -245,6 +282,22 @@ def main():
             first = True
         new = rebuild(code, ex_date, ratio, snaps, first, base)
         ok, r = step_ok(new, ex_date)
+        old_ex = ex_date
+        if not ok:
+            # 権利落ち日のずれ（Yahoo の日付が実際と違う）や、過去の修正で二重に割った段差が残っている場合は、
+            # 実際の段差の日を探し、その日より前を段差の分だけ直す。台帳の権利落ち日も実際の日に直す。
+            st = actual_step(read_prices(path), ex_date, ratio)
+            if st:
+                sd, rr, t = st
+                cand_new = realign(read_prices(path), sd, t)
+                inf = infer_from_snapshots(code, snaps, sd)
+                real_ex = inf[0] if inf and abs((pd.Timestamp(inf[0]) - pd.Timestamp(sd)).days) <= 20 else sd
+                ok2, r2 = step_ok(cand_new, sd)
+                if ok2:
+                    logging.info("  %s: 権利落ち %s では段差 %.2f 倍が残るため、実際の段差 %s（%.2f 倍）で直す（台帳の権利落ち日 %s）",
+                                 code, ex_date, r, sd, rr, real_ex)
+                    new, ok, r, ex_date = cand_new, True, r2, real_ex
+                    first = True
         if not ok:
             logging.info("  %s: 分割比 %s（%s, 権利落ち %s）で直しても段差 %.2f 倍が残るため見送り", code, ratio, src, ex_date, r)
             warn.append(code); continue
@@ -256,6 +309,8 @@ def main():
                 shutil.copy(path, os.path.join(bdir, f"{code}.csv"))
             new.to_csv(path, index=False)
         if not a.dry_run:
+            if ex_date != old_ex:
+                L = L[~((L["code"] == code) & (L["ex_date"] == old_ex))]
             L = pd.concat([L, pd.DataFrame([dict(code=code, ex_date=ex_date, ratio=ratio, source=src,
                                                  applied=today if first else known["applied"].iloc[-1])])])
         if changed:

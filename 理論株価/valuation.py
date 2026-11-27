@@ -116,6 +116,51 @@ def risk_free() -> tuple[float, str]:
         return P["rf_default"], "既定値"
 
 
+def yahoo_basis(d: pd.DataFrame) -> pd.DataFrame:
+    """Yahoo のアナリスト予想（fundamentals/raw_analyst/*.json）から、今期（0y）予想の「前期EPS」（yearAgoEps）と
+    今期の期末を読み、手元の実績EPSと同じ基準（同じ決算期・同じ株数ベース）かを確かめる材料にする。
+    手元の実績EPSが決算データの取り違えで「当期純利益÷株数」と合わない銘柄（2026-11 時点で約120銘柄。
+    例: 住友重機械 6302 の EPS 欄に前期の BPS が入っていた）は、Yahoo の前期EPSに近いほうを採る。"""
+    import json
+    raw = FUND / "raw_analyst"
+    ya, end = {}, {}
+    if raw.exists():
+        for f in raw.glob("*.json"):
+            code = f.stem[:-2] if f.stem.endswith(".T") else f.stem.replace("-", ".")
+            try:
+                for t in json.loads(f.read_text(encoding="utf-8")).get("earningsTrend", {}).get("trend", []):
+                    if t.get("period") == "0y":
+                        v = ((t.get("earningsEstimate") or {}).get("yearAgoEps") or {}).get("raw")
+                        if v is not None:
+                            ya[code] = float(v)
+                        end[code] = t.get("endDate")
+            except Exception:
+                continue
+    d["前期EPS(Yahoo)"] = d["コード"].map(ya)
+    d["Yahoo今期末"] = d["コード"].map(end)
+    # 同じ決算期どうしだけ比べる（Yahoo の今期末のおよそ1年前が手元の最新決算期）
+    gap = (pd.to_datetime(d["Yahoo今期末"], errors="coerce") - pd.to_datetime(d["決算期"], errors="coerce")).dt.days
+    d.loc[~gap.between(300, 430), "前期EPS(Yahoo)"] = np.nan
+    # 実績EPSの点検：当期純利益÷株数と25%超ずれるとき、Yahoo の前期EPSに近いほうを採る
+    sh = num(d.get("発行済株式数", pd.Series(np.nan, index=d.index)))
+    ni = num(d.get("当期純利益(億円)", pd.Series(np.nan, index=d.index))) * 1e8
+    calc = (ni / sh).where(sh > 0)
+    e0 = num(d["EPS"])
+    off = (calc.abs() > 0) & ((e0 / calc - 1).abs() > 0.25)
+    y = d["前期EPS(Yahoo)"]
+    near = lambda a: ((a / y - 1).abs() < 0.25) & y.notna() & (y != 0)
+    use_calc = off & near(calc) & ~near(e0)
+    d["実績EPSの補正"] = np.where(use_calc, "当期純利益÷株数に補正（元 " + e0.round(2).astype(str) + "）", "")
+    d.loc[use_calc, "EPS"] = calc[use_calc].round(2)
+    # 1株指標の基準の食い違い（株式分割の反映もれなど）：Yahoo の前期EPSと実績EPSが1.8倍以上ずれる
+    r = d["前期EPS(Yahoo)"] / d["EPS"]
+    d["基準ずれ"] = (d["EPS"] > 0) & (d["前期EPS(Yahoo)"] > 0) & ((r > 1.8) | (r < 1 / 1.8))
+    d["基準一致"] = (d["EPS"] > 0) & (d["前期EPS(Yahoo)"] > 0) & ((r - 1).abs() < 0.25)
+    if use_calc.any():
+        log(f"実績EPSを当期純利益÷株数に補正: {int(use_calc.sum())} 銘柄（Yahoo の前期EPSで確認）")
+    return d
+
+
 def load() -> pd.DataFrame:
     s = pd.read_csv(FUND / "analysis" / "スコア一覧.csv", dtype={"コード": str}, low_memory=False)
     l = pd.read_csv(FUND / "fundamentals_latest.csv", dtype={"コード": str}, low_memory=False)
@@ -149,6 +194,7 @@ def load() -> pd.DataFrame:
             if c not in d:
                 d[c] = np.nan
             d[c] = num(d[c])
+    d = yahoo_basis(d)
     d["金融"] = d["金融"].astype(str).str.lower().isin(["true", "1"])
     # 金融子会社（販売金融・銀行・カード等）を持つ会社：貸付の増加が投資CF・営業CFに入りFCFが歪むためDCFの対象外。一覧は finance_subsidiary.csv（追加・削除可）
     fs_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "finance_subsidiary.csv")
@@ -355,7 +401,17 @@ def build() -> tuple[pd.DataFrame, dict]:
         base_e = eps_jq.where(eps_jq.notna(), d["EPS"])
         r_ = ey / base_e
         fresh = pd.to_datetime(d["Yahoo取得日"], errors="coerce") >= pd.Timestamp.today() - pd.Timedelta(days=45)
-        ok_y = ey.notna() & fresh & (d["アナリスト数"].fillna(0) >= 1) & (base_e.isna() | ((r_ > 0.33) & (r_ < 3)) | (base_e <= 0))
+        # 桁の確認：会社予想・実績の0.33〜3倍。外れても、Yahoo の前期EPSが手元の実績EPSと一致する（同じ基準の）予想は
+        # 本当の大幅増減益として採る（2026-11 のキオクシア 285A：メモリー市況で今期予想EPSが前期の約10倍）。
+        # 逆に Yahoo の前期EPSと実績EPSが1.8倍以上ずれる銘柄は、分割の反映もれなどで基準が違うので採らない。
+        ok_y = ey.notna() & fresh & (d["アナリスト数"].fillna(0) >= 1) & (
+            base_e.isna() | ((r_ > 0.33) & (r_ < 3)) | (base_e <= 0) | d["基準一致"])
+        # 採らなかった予想のうち、Yahoo の前期EPSと実績EPSの比が分割比らしい（2・3・4・5・10倍など）ものは注意を出す
+        rr_ = (d["前期EPS(Yahoo)"] / d["EPS"]).where(d["基準ずれ"])
+        splitlike = pd.Series(False, index=d.index)
+        for k_ in (2, 3, 4, 5, 10, 20, 0.5, 1 / 3, 0.25, 0.2, 0.1, 0.05):
+            splitlike |= (rr_ / k_ - 1).abs() < 0.05
+        d["基準ずれ"] = splitlike & ey.notna() & ~ok_y
     else:
         ok_y = pd.Series(False, index=d.index)
         ey = pd.Series(np.nan, index=d.index)
@@ -375,7 +431,13 @@ def build() -> tuple[pd.DataFrame, dict]:
     cur_per = cur_per.where((cur_per >= P["own_per_lo"]) & (cur_per <= P["own_per_hi"]))
     per_mult = own_per.fillna(cur_per).fillna(sec_per)
     per_basis = np.where(own_per.notna(), "自社の過去PER", np.where(cur_per.notna(), "直近のPER（過去2期そろわず）", "業種の予想PER"))
-    v_per = (eps_f * per_mult).where(eps_f > 0)
+    # 今期だけの一時的な利益（資産売却益など）：今期予想EPSが来期予想EPSと実績EPSの両方の2.5倍を超えるときは、
+    # 倍率を掛けるPER法には来期予想EPSを使う（2026-11 のサッポロ 2501：不動産事業の売却益で今期780円・来期54円）
+    ey2_ = d["来期予想EPS(Yahoo)"] if "来期予想EPS(Yahoo)" in d else pd.Series(np.nan, index=d.index)
+    spike = ok_y & (ey2_ > 0) & (eps_f > 2.5 * ey2_) & (eps_f > 2.5 * d["EPS"].where(d["EPS"] > 0, 0).fillna(0))
+    eps_per = eps_f.where(~spike, ey2_)
+    d["一時益"] = spike
+    v_per = (eps_per * per_mult).where(eps_per > 0)
 
     # 2 PBR法：BPS（実績）× 適正PBR。
     #   適正PBR＝自社の過去3期のPBR（期中の平均株価÷期末BPS）の加重平均（3:2:1）。そろわない銘柄は理論PBR（(ROE−g)/(株主資本コスト−g)）
@@ -657,7 +719,9 @@ def build() -> tuple[pd.DataFrame, dict]:
     out.loc[fx, "信頼度"] = "対象外"
     flg = lambda c: d[c].astype(str).str.lower().isin(["true", "1"]) if c in d else pd.Series(False, index=d.index)
     note = np.where(fx, "外貨建て決算", "")
-    for c, t in [("EPS乖離", "EPSと株価の単位ずれの疑い"), ("決算が古い", "決算が古い"), ("一時要因の疑い", "一時的な損益の疑い")]:
+    for c, t in [("EPS乖離", "EPSと株価の単位ずれの疑い"), ("決算が古い", "決算が古い"), ("一時要因の疑い", "一時的な損益の疑い"),
+                 ("基準ずれ", "Yahoo と1株指標の基準が食い違う（株式分割の反映もれの疑い）"),
+                 ("一時益", "今期予想は一時的な利益を含む（PER法は来期予想EPSで計算）")]:
         note = np.where(flg(c), np.where(note == "", t, note + "・" + t), note)
     # ---- 理論株価の当てはまりが悪い可能性（市場が長く割り引いている・利益が現金になっていない・乖離が極端）
     ratio = fair / px
@@ -739,6 +803,8 @@ def build() -> tuple[pd.DataFrame, dict]:
     out["計算_除外した手法"] = exc
     out["予想EPS"] = eps_f.round(2)
     out["予想EPSの出所"] = eps_src
+    out["前期EPS(Yahoo)"] = d["前期EPS(Yahoo)"].round(2)
+    out["実績EPSの補正"] = d["実績EPSの補正"]
     out["基準日"] = d.get("株価日付")
 
     meta = dict(P, rf=rf, rf_src=rf_src, 銘柄数=len(out), 算出数=int(fair.notna().sum()))
