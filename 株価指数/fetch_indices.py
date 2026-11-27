@@ -180,6 +180,15 @@ def from_topix_etf() -> pd.DataFrame:
     return out
 
 
+def from_yahoojp_topix() -> pd.DataFrame:
+    """TOPIX そのもの（Yahoo!ファイナンス 998405.T の時系列・現在値。topix_yjp.py、2026-11-25）。
+    data/topix_yjp.csv にためた全期間を返す（初回は2009年から取得して数分）"""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import topix_yjp
+    df = topix_yjp.update((OUTDIR or Path(__file__).resolve().parent / "data") / "topix_yjp.csv", log=log.info)
+    return normalize(df, "yahoojp:998405.T")
+
+
 def from_jquants_topix() -> pd.DataFrame:
     key = os.environ.get("JQUANTS_API_KEY")
     if not key:
@@ -211,10 +220,11 @@ INDICES = [
         ("FRED NIKKEI225 (終値のみ)", lambda: from_fred("NIKKEI225")),
     ]),
     ("topix", "TOPIX", "all", [
-        # 後ろほど優先（同じ日は後のソースで上書き）：ETF換算 < J-Quants < stooq（指数そのもの）
+        # 後ろほど優先（同じ日は後のソースで上書き）：ETF換算 < J-Quants < stooq < Yahoo!ファイナンス（指数そのもの）
         ("TOPIX連動ETF 1306.T（TOPIX換算）", from_topix_etf),
         ("J-Quants", from_jquants_topix),
         ("Stooq ^TPX", lambda: from_stooq("^tpx")),
+        ("Yahoo!ファイナンス 998405.T（TOPIX そのもの）", from_yahoojp_topix),   # 2026-11-25 追加。最優先
     ]),
     ("nikkei_vi", "日経平均VI", "first", [
         ("日経公式CSV (2023〜)", lambda: from_nikkei_csv(NIKKEI_VI_DAILY)),

@@ -247,13 +247,13 @@ def _spark_tiles(M):
         cs = "%" if t["csuf"] == "%" else t["csuf"]
         dv = close - prev
         chs = (f'{dv:+,.{nd}f}' if t["csuf"] == "%" else f'{chg:+,.{3 if t["csuf"] == "pt" else nd}f}{cs}')
-        svg = ""
+        svg, hl = "", ""
         x = (I.get(t["k"]) or {}).get(dt)
         if x and len(x.get("v", [])) >= 3:
             v = list(x["v"])
             r = close / v[-1] if v[-1] else 1
             v = [a * r for a in v] if abs(r - 1) > 0.02 else v[:-1] + [close]   # TOPIX は ETF の形を終値に合わせる
-            W, H, R, T, B = 220, 66, 44, 5, 5
+            W, H, R, T, B = 220, 50, 5, 4, 4
             hi, lo = max(v), min(v)
             y1, y0 = max(hi, prev), min(lo, prev)
             pad = (y1 - y0) * 0.06 or abs(prev) * 0.001 or 1
@@ -279,14 +279,15 @@ def _spark_tiles(M):
                    f'<line x1="0" x2="{W - R}" y1="{yp:.1f}" y2="{yp:.1f}" class="pv"/>'
                    f'<polyline points="{pts}" class="ln"/>'
                    f'<circle cx="{X(len(v) - 1):.1f}" cy="{Y(v[-1]):.1f}" r="2.2" class="dt"/>'
-                   f'<text x="{W - R + 4}" y="{yh:.1f}">{fm(hi)}</text>'
-                   f'<text x="{W - R + 4}" y="{yl:.1f}">{fm(lo)}</text></svg>'
+                   f'</svg>'
                    f'<div class="tm"><span>{e(x.get("t0", ""))}</span><span>{e(x.get("t1", ""))}</span></div>')
+            hl = f'<div class="hl"><span>H:<b>{fm(hi)}</b></span><span>L:<b>{fm(lo)}</b></span></div>'   # 日中の高値・安値
         else:
             svg = '<div class="nos"></div>'
         out += (f'<div class="mi mt" data-k="{e(t["k"])}"><div class="nm"><span>{e(t["name"])}</span>{dl}</div>'
-                f'<div class="pc {c}{big}">{pct:+.2f}<i>%</i></div>{svg}'
-                f'<div class="cv"><b>{close:,.{nd}f}{e(t["suf"])}</b><em class="{c}">{chs}</em></div></div>')
+                f'<div class="bv">{close:,.{nd}f}<i>{e(t["suf"])}</i></div>'      # 見出しは終値（現在値）、前日比は小さく
+                f'<div class="ch {c}"><span class="pc{big}">{"▲" if pct > 0 else "▼" if pct < 0 else ""}{abs(pct):.2f}%</span><em>{chs}</em></div>'
+                f'{svg}{hl}</div>')
     return out
 
 
@@ -888,7 +889,7 @@ h1{font-size:24px;font-weight:800;letter-spacing:.02em;margin:0}
 .mbtn{display:inline-block}.mkt:not(.open) .mmore{display:none}}
 /* 概況に地合い・指数・業種をまとめた1枚（KB_MKT=merged） */
 a.mis{text-decoration:none;color:inherit}
-.mig{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;background:transparent;border:0;border-radius:0;overflow:visible}.mt{border:1px solid var(--line);border-radius:12px;padding:10px 12px 9px;gap:2px;transition:background .15s}a.mis .mt:hover{background:color-mix(in srgb,var(--fg) 5%,var(--card))}.mt .nm{display:flex;align-items:baseline;gap:6px;font-size:12px;font-weight:700;color:var(--fg2);white-space:nowrap;overflow:hidden}.mt .nm span{font-size:12px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis}.mt .nm small{font-size:10.5px;color:var(--mut);font-weight:600}.mt .pc{align-self:flex-start;font-size:24px;font-weight:800;letter-spacing:-.03em;line-height:1.2}.mt .pc i{font-style:normal;font-size:14px;margin-left:1px}.mt .pc.x{color:#fff;border-radius:7px;padding:0 7px}.mt .pc.x.u{background:var(--upb)}.mt .pc.x.d{background:var(--dnb)}.mt svg{display:block;width:100%;height:auto;margin-top:4px;overflow:visible}.mt svg .fu{fill:var(--upb);fill-opacity:calc(.18 + .1*var(--k))}.mt svg .fd{fill:var(--dnb);fill-opacity:calc(.18 + .1*var(--k))}.mt svg .pv{stroke:var(--mut);stroke-width:1;stroke-dasharray:3 3}.mt svg .ln{fill:none;stroke:var(--fg);stroke-width:1.4;stroke-linejoin:round}.mt svg .dt{fill:var(--fg)}.mt svg text{font-size:9.5px;font-weight:700;fill:var(--mut)}.mt .tm{display:flex;justify-content:space-between;padding-right:20%;font-size:9.5px;color:var(--mut);margin-top:1px}.mt .nos{height:52px}.mt .cv{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:3px}.mt .cv b{font-size:15px;font-weight:800;letter-spacing:-.02em}.mt .cv em{font-style:normal;font-size:12px;font-weight:700}@media(max-width:700px){.mig{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.mt{padding:8px 9px 7px}.mt .pc{font-size:20px}.mt .cv b{font-size:13.5px}.mt .cv em{font-size:11px}.mt svg text{font-size:14px}.mt .tm{font-size:9px}}
+.mig{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;background:transparent;border:0;border-radius:0;overflow:visible}.mt{border:1px solid var(--line);border-radius:12px;padding:10px 12px 9px;gap:2px;transition:background .15s}a.mis .mt:hover{background:color-mix(in srgb,var(--fg) 5%,var(--card))}.mt .nm{display:flex;align-items:baseline;gap:6px;font-size:12px;font-weight:700;color:var(--fg2);white-space:nowrap;overflow:hidden}.mt .nm span{font-size:12px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis}.mt .nm small{font-size:10.5px;color:var(--mut);font-weight:600}.mt .pc{align-self:flex-start;font-size:24px;font-weight:800;letter-spacing:-.03em;line-height:1.2}.mt .pc i{font-style:normal;font-size:14px;margin-left:1px}.mt .pc.x{color:#fff;border-radius:7px;padding:0 7px}.mt .pc.x.u{background:var(--upb)}.mt .pc.x.d{background:var(--dnb)}.mt svg{display:block;width:100%;height:auto;margin-top:4px;overflow:visible}.mt svg .fu{fill:var(--upb);fill-opacity:calc(.18 + .1*var(--k))}.mt svg .fd{fill:var(--dnb);fill-opacity:calc(.18 + .1*var(--k))}.mt svg .pv{stroke:var(--mut);stroke-width:1;stroke-dasharray:3 3}.mt svg .ln{fill:none;stroke:var(--fg);stroke-width:1.4;stroke-linejoin:round}.mt svg .dt{fill:var(--fg)}.mt .tm{display:flex;justify-content:space-between;padding-right:3%;font-size:9.5px;color:var(--mut);margin-top:1px}.mt .nos{height:40px}.mt .bv{font-size:22px;font-weight:800;letter-spacing:-.03em;line-height:1.2;color:var(--fg);white-space:nowrap}.mt .bv i{font-style:normal;font-size:14px;margin-left:1px}.mt .ch{display:flex;align-items:baseline;gap:0 8px;flex-wrap:wrap;font-size:12.5px;font-weight:700}.mt .ch em{font-style:normal;font-size:inherit}.mt .ch .pc{font-size:inherit;letter-spacing:0;line-height:1.4;align-self:auto}.mt .ch .pc.x{color:#fff;border-radius:5px;padding:0 5px}.mt .ch.u .pc.x{background:var(--upb)}.mt .ch.d .pc.x{background:var(--dnb)}.mt .hl{display:flex;gap:0 10px;flex-wrap:wrap;font-size:9.5px;line-height:1.3;color:var(--mut);font-weight:600}.mt .hl span{font-size:inherit;color:var(--mut);overflow:visible}.mt .hl b{font-size:inherit;letter-spacing:0;color:var(--fg2);font-weight:700;margin-left:1px}.mt .cv{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:3px}.mt .cv b{font-size:15px;font-weight:800;letter-spacing:-.02em}.mt .cv em{font-style:normal;font-size:12px;font-weight:700}@media(max-width:700px){.mig{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}.mt{padding:5px 6px 5px;border-radius:9px;gap:0}.mt .nm,.mt .nm span{font-size:10.5px}.mt .nm small{font-size:9px}.mt .pc{font-size:15px}.mt .pc i{font-size:10px}.mt .pc.x{padding:0 4px;border-radius:5px}.mt svg{margin-top:2px}.mt .tm{display:none}.mt .nos{height:26px}.mt .cv{gap:0 4px;margin-top:1px}.mt .cv b{font-size:11.5px}.mt .cv em{font-size:9.5px}.mt .hl{font-size:8px;gap:0 5px;line-height:1.25}.mt .bv{font-size:14.5px}.mt .bv i{font-size:10px}.mt .ch{font-size:9.5px;gap:0 4px}.mt .ch .pc.x{padding:0 3px;border-radius:4px}}
 .msec{display:flex;flex-direction:column;gap:10px;padding-top:12px;border-top:1px solid var(--line)}
 .mst{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-size:12.5px;color:var(--mut)}
 .mst .ph{display:inline-block;padding:0 8px;border:1px solid var(--line);border-radius:6px;font-size:11.5px;font-weight:800;color:var(--fg);line-height:1.7}

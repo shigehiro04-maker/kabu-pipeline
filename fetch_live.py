@@ -29,7 +29,7 @@ else:
     REPO, TZ = "shigehiro04-maker/kabu-charts", JST
     OPEN, CLOSE = (9, 0), (15, 40)
     # 東京の取引時間に動くものだけ（米国の指数・金利・VIXは東京時間に新しい値が無いので今の表示のまま）
-    # TOPIX は Yahoo に無いので、ETF（1306.T）の前日比で前日の TOPIX 終値を換算（主要指数ダッシュボードと同じ考え方）
+    # TOPIX は Yahoo(米) に無いので、Yahoo!ファイナンス（日本）の現在値を使う（2026-11-25〜。取れないときは ETF（1306.T）の前日比で前日の TOPIX 終値を換算）
     # 日経平均VI は Yahoo の ^NKVI.OS（前日終値が日経の公式CSVと一致することを確認、2026-11-24）
     KEYS = {"nikkei225": "^N225", "topix": "1306.T", "nikkei_vi": "^NKVI.OS", "usdjpy": "JPY=X", "wti": "CL=F", "gold": "GC=F", "btc": "BTC-USD"}
 
@@ -95,10 +95,18 @@ def fetch(today):
         if not (last > 0 and prev > 0):
             continue
         if k == "topix":
-            base = topix_prev(today)
-            if not base:
-                continue
-            last, prev = base * last / prev, base
+            # 2026-11-25：TOPIX そのものの現在値（Yahoo!ファイナンス 998405.T、株価指数/topix_yjp.py）。取れないときは ETF 換算
+            try:
+                sys.path.insert(0, str(BASE / "株価指数"))
+                import topix_yjp
+                q = topix_yjp.quote()
+                last, prev = q["price"], round(q["price"] - q["chg"], 2)
+            except Exception as ex:
+                print(f"  topix（Yahoo!ファイナンス）取れませんでした: {ex}（ETF 換算を使う）")
+                base = topix_prev(today)
+                if not base:
+                    continue
+                last, prev = base * last / prev, base
         rate = k == "us10y"
         diff = last - prev
         chg = diff if rate or k in ("vix", "nikkei_vi", "usdjpy") else diff / prev * 100

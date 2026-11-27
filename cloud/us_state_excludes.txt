@@ -1,5 +1,0 @@
-./.venv
-./.git
-./backup
-./data/charts
-./logs/run_daily.lock
