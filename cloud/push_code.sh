@@ -49,4 +49,4 @@ else
 fi
 gh auth setup-git >/dev/null 2>&1 || true
 g push -q -u origin main
-echo "✅ GitHub（$REPO）へ送りました"
+echo "✅ GitHub（${REPO}）へ送りました"
