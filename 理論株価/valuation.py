@@ -26,7 +26,7 @@
 
 6 RIM（残余利益モデル）
   理論株価＝BPS＋Σ(ROE_t−株主資本コスト)×BPS_{t−1}÷(1＋株主資本コスト)^t＋継続価値
-  1〜2年目のROE＝今期予想EPS÷BPS（無ければ実績）、3〜10年目で業種のROE中央値へ線形に収れん
+  1〜2年目のROE＝今期予想EPS÷BPS（無ければ実績）、3〜10年目で自社の過去の平均ROE（無ければ業種のROE中央値＋上回る分の一部）へ線形に収れん
   BPSはクリーンサープラス（BPS＋EPS−配当）で積み上げ。11年目以降の残余利益は毎年 持続率ω で減衰
   織り込みROE＝今の株価を定常RIM（P＝B×(1＋(ROE−ke)/(ke−g))）で説明するROE
 
@@ -507,16 +507,22 @@ def build() -> tuple[pd.DataFrame, dict]:
     # ---- 参考：RIM（残余利益モデル）
     roe_all = d["ROE(%)"].where(d["ROE(%)"].between(-50, 60)) / 100
     sec_roe = roe_all.groupby(d["業種"]).transform("median").fillna(roe_all.median())
+    # 長期に戻っていくROE：その会社自身の過去のROE（平均ROE＝期間中の純利益÷平均自己資本の平均、最大4期）。
+    # 高い利益率を長く保ってきた会社（例: 信越化学）を業種の中央値まで下げない（2026-11-27 から）。
+    # 過去のROEが無い・範囲外の銘柄は従来どおり 業種ROE中央値＋上回る分の rim_moat。0%未満は0%とする
+    own_roe = (d["平均ROE(%)"] / 100).where(d["平均ROE(%)"].between(-50, 60)) if "平均ROE(%)" in d else pd.Series(np.nan, index=d.index)
+    own_roe = own_roe.clip(lower=0)
     om = P["rim_omega"]
 
-    def rim(b0, eps1, dps1, ke_, roe_lt):
+    def rim(b0, eps1, dps1, ke_, roe_lt, roe_own=np.nan):
         if not (np.isfinite(b0) and b0 > 0 and np.isfinite(eps1) and np.isfinite(ke_)):
             return (np.nan,) * 3
         roe1 = float(np.clip(eps1 / b0, -0.5, 0.6))
         po = float(np.clip(dps1 / eps1, 0, 1)) if (np.isfinite(dps1) and eps1 > 0) else 0.3
         b, pv, ri = b0, 0.0, 0.0
         for t in range(1, 11):
-            tgt = roe_lt + max(roe1 - roe_lt, 0) * P["rim_moat"]     # 業種を上回る分は一部が残る（競争優位）
+            tgt = (roe_own if np.isfinite(roe_own)                     # 自社の過去のROEへ戻る
+                   else roe_lt + max(roe1 - roe_lt, 0) * P["rim_moat"])  # 無ければ業種ROE＋上回る分の一部
             r_t = roe1 if t <= 2 else roe1 + (tgt - roe1) * (t - 2) / 8
             ri = (r_t - ke_) * b
             pv += ri / (1 + ke_) ** t
@@ -528,7 +534,7 @@ def build() -> tuple[pd.DataFrame, dict]:
         return b0 + pv + tv, pv, tv
 
     d0r = d["予想1株配当(円)"].where(d["予想1株配当(円)"] >= 0, d["一株配当"])
-    R3 = [rim(b, e, dv, k, rl) for b, e, dv, k, rl in zip(bps, eps_f, d0r, ke, sec_roe)]
+    R3 = [rim(b, e, dv, k, rl, ro) for b, e, dv, k, rl, ro in zip(bps, eps_f, d0r, ke, sec_roe, own_roe)]
     rim_v = pd.Series([x[0] for x in R3], index=d.index)
     rim_v = rim_v.where(rim_v > 0)
     rim_pv = pd.Series([x[1] for x in R3], index=d.index)
@@ -795,7 +801,8 @@ def build() -> tuple[pd.DataFrame, dict]:
     out["計算_レバレッジ補正"] = lev.round(3)
     out["計算_経常利益(億円)"] = (keijo / 1e8).round(1)
     roe1_ = (eps_f / bps).clip(-0.5, 0.6)
-    out["計算_RIM_目標ROE(%)"] = ((sec_roe + (roe1_ - sec_roe).clip(lower=0) * P["rim_moat"]) * 100).round(1)
+    out["計算_RIM_目標ROE(%)"] = (own_roe.where(own_roe.notna(), sec_roe + (roe1_ - sec_roe).clip(lower=0) * P["rim_moat"]) * 100).round(1)
+    out["計算_RIM_目標ROEの基準"] = np.where(own_roe.notna(), "自社の過去の平均ROE", "業種ROE中央値＋上回る分の一部")
     exc = []
     for i in range(len(V_raw)):
         names = [m for m in METHODS if pd.notna(V_raw.iloc[i][m]) and pd.isna(V.iloc[i][m])]

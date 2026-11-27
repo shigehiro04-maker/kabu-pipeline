@@ -96,6 +96,9 @@ def main() -> int:
     css = (BASE / "需給分析" / "jukyu_style.css").read_text(encoding="utf-8")
     css += (DIR / "valuation_extra.css").read_text(encoding="utf-8")
     page = (DIR / "valuation_page.html").read_text(encoding="utf-8")
+    # RIM の長期ROE：自社の過去の平均ROEへ戻る（2026-11-27 から。valuation.py の own_roe）
+    page = page.replace("3〜10年目に業種のROE中央値へ直線で収れん（競争で超過利益が薄れる想定）",
+                        "3〜10年目に自社の過去の平均ROE（純利益÷平均自己資本の平均）へ直線で収れん。過去のROEが無い銘柄は業種のROE中央値＋上回る分の半分")
     data = {"f": [k for k, _ in FIELDS_ALL], "rows": rows, "meta": meta, "sum": summ}
     page = (page.replace("/*CSS*/", css)
                 .replace("/*DATA*/", json.dumps(data, ensure_ascii=False, separators=(",", ":")))
